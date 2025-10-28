@@ -1,6 +1,6 @@
 # binf6210: BINF6210 Assignments
 
-# A1 Structure
+# Assignment 1 Structure
 ```
 ./A1
 ├── data
@@ -9,9 +9,9 @@
 ├── doc
 │   └── storyboard.pdf
 ├── figs
-│   ├── his_latitude.png
+│   ├── hist_latitude.png
 │   └── regression_range_lat.png
 └── R
-│   ├── analysis.html
-│   └── analysis.Rmd
+    ├── analysis.html
+    └── analysis.Rmd
 ```
