@@ -1,0 +1,129 @@
+---
+title: "BINF*6210 Assignment 1"
+subtitle: 'Fangyi Li (1092229)'
+output: html_document
+---
+
+# 1. Introduction
+This section introduces the goal of the analysis: to test whether Canid BINs (Barcode Index Numbers) found at higher latitudes have larger geographic ranges, following Rapoport’s rule. It also reminds you to set the working directory so all files can be read and written correctly.
+
+
+# 2. Package Setup
+This block installs and loads all required R packages (readr, dplyr, tidyr, and ggplot2). These packages handle reading data, cleaning and summarizing tables, and creating plots. Running this ensures that the code will work even on a new computer or environment without prior setup.
+```{r setup, message=FALSE, warning=FALSE}
+if (!requireNamespace("readr", quietly = TRUE)) {
+  install.packages("readr")
+}
+library(readr)
+
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+library(dplyr)
+
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+library(tidyr)
+
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+library(ggplot2)
+```
+
+
+
+# 3. Import BOLD Dataset
+Here, the raw BOLD dataset (Canidae_BOLD.tsv) is imported using read_tsv(). This file contains all downloaded Canid barcode records, including both complete and incomplete entries. The following cleaning step will refine this dataset by removing missing or invalid coordinates to prepare it for geographic analysis.
+```{r import_raw, message=FALSE, warning=FALSE}
+df_raw <- readr::read_tsv(file = '../data/Canidae_BOLD.tsv')
+```
+
+This code filters out records without coordinates, removes the square brackets from coordinate strings, separates them into numeric latitude and longitude columns, and excludes any rows with invalid or missing values:
+- 2319 records are removed because of lack of coordinates information. 
+- 1258 records left.
+The result is saved as Canidae_clean_coords.tsv, ensuring a reproducible and fully cleaned dataset that contains only usable geographic data.
+```{r clean, message=FALSE, warning=FALSE}
+df_clean <- df_raw %>%
+  filter(!is.na(coord) & coord != "")
+
+df_clean_split <- df_clean %>%
+  filter(!is.na(coord) & coord != "") %>%
+  mutate(coord = gsub("\\[|\\]", "", coord)) %>%   # remove [ and ]
+  separate(coord, into = c("lat", "lon"), sep = ", ", remove = FALSE) %>%
+  mutate(lat = as.numeric(lat), lon = as.numeric(lon)) %>%
+  filter(!is.na(lat) & !is.na(lon))
+
+readr::write_tsv(df_clean_split, "../data/Canidae_clean_coords.tsv")
+```
+After cleaning, the processed dataset is reloaded as df_canidae for further analysis. This confirms that the data are ready to summarize, visualize, and test without re-running the cleaning steps every time.
+```{r import_clean, message=FALSE, warning=FALSE}
+df_canidae <- readr::read_tsv(file = "../data/Canidae_clean_coords.tsv")
+
+```
+
+
+
+# 4. Summarize by BIN
+This section aggregates all specimen records by their BIN identifier. For each BIN, it calculates the number of records, minimum and maximum latitude, latitudinal range (lat_max - lat_min), and the median latitude (representing where the BIN is typically found). It also records the first species name associated with each BIN. Then, it filters out BINs with missing identifiers or fewer than three records, keeping only well-sampled groups suitable for analysis.
+```{r summarize_bin, message=FALSE, warning=FALSE}
+bin_summary <- df_canidae %>%
+  dplyr::group_by(bin_uri) %>%
+  dplyr::summarise(n_records = dplyr::n(),
+                   lat_min = min(lat),
+                   lat_max = max(lat),
+                   lat_range = lat_max - lat_min,
+                   lat_median = median(lat),
+                   species = dplyr::first(species)) %>%
+  dplyr::ungroup()
+
+bin_filtered <- dplyr::filter(bin_summary, !is.na(bin_uri), n_records >= 3)
+bin_filtered
+
+
+```
+
+
+
+# 5. Distribution of Median Latitudes
+This part creates a histogram showing where the BINs are most common along the latitude gradient. Most Canid BINs occur between 30° and 45° North, which means the dataset is strongly biased toward temperate northern regions, with only one or two BINs appearing in the Southern Hemisphere. This step provides context for interpreting later results.
+```{r median_lat_dist, message=FALSE, warning=FALSE}
+ggplot(bin_filtered, aes(x = lat_median)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Median Latitudes (Canidae BINs)",
+       x = "Median Latitude (°)", 
+       y = "Number of BINs")
+```
+
+
+# 6. Plot Latitude vs. Range Size
+This section visualizes the main relationship of interest. It plots each BIN’s median latitude on the x-axis and its latitudinal range on the y-axis, coloring points by hemisphere. A linear regression line is added to highlight the trend. The resulting figure shows that the slope is slightly negative rather than positive, suggesting that higher-latitude BINs in this dataset do not have broader ranges as Rapoport’s rule predicts.
+```{r linear_reg, message=FALSE, warning=FALSE}
+bin_filtered <- dplyr::mutate(bin_filtered, hemisphere = ifelse(lat_median >= 0, "Northern", "Southern"))
+
+ggplot2::ggplot(bin_filtered, ggplot2::aes(x = lat_median, y = lat_range, color = hemisphere)) +
+  ggplot2::geom_point(size = 3, alpha = 0.8) +
+  ggplot2::geom_smooth(method = "lm", color = "black", se = TRUE) +
+  ggplot2::labs(title = "Latitudinal Range vs. Median Latitude in Canidae",
+                x = "Median Latitude (°; negative = South, positive = North)",
+                y = "Latitudinal Range (°)",
+                color = "Hemisphere") +
+  ggplot2::theme_minimal()
+
+```
+
+
+
+# 7. Statistical Test
+Here, a linear model is fitted (lat_range ~ lat_median) to formally test whether latitude significantly predicts range size. The model summary provides the slope, standard error, p-value, and R². The result shows a weak negative slope that is not statistically significant (p > 0.05), meaning that the data do not support the expected positive relationship between latitude and geographic range size.
+```{r stats, message=FALSE, warning=FALSE}
+model <- lm(lat_range ~ lat_median, data = bin_filtered)
+summary(model)
+
+```
+
+
+
+# 8. Conclusion
+The cleaned Canidae dataset contained only eight BINs after filtering, and the analysis found no significant relationship between latitude and range size. This result likely reflects limited sample size and strong northern bias rather than a true absence of the Rapoport pattern. Despite the lack of statistical support, the analysis successfully demonstrates the workflow of importing, cleaning, summarizing, visualizing, and testing real biodiversity data in R.
