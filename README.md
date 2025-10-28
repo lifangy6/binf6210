@@ -2,7 +2,7 @@
 
 # A1 Structure
 ```
-A1
+./A1
 ├── data
 │   ├── Canidae_BOLD.tsv
 │   └── Canidae_clean_coords.tsv
@@ -11,8 +11,7 @@ A1
 ├── figs
 │   ├── his_latitude.png
 │   └── regression_range_lat.png
-├── R
+└── R
 │   ├── analysis.html
 │   └── analysis.Rmd
-└── README.md
 ```
