@@ -2,6 +2,7 @@
 title: "BINF*6210 Assignment 1"
 subtitle: 'Fangyi Li (1092229)'
 output: html_document
+secondary author: Lishita Rowjee
 ---
 
 # 1. Introduction
@@ -32,6 +33,17 @@ if (!requireNamespace("ggplot2", quietly = TRUE)) {
 library(ggplot2)
 ```
 
+**Package setup possible improvement** 
+Instead of using
+if (!requireNamespace()) install.packages() four times,you can potentially use lapply() to loop through your package names.
+```{r}
+packages <- c("readr", "dplyr", "tidyr", "ggplot2")
+
+invisible(lapply(packages, function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) install.packages(pkg)
+  library(pkg, character.only = TRUE)
+}))
+```
 
 
 # 3. Import BOLD Dataset
@@ -40,10 +52,33 @@ Here, the raw BOLD dataset (Canidae_BOLD.tsv) is imported using read_tsv(). This
 df_raw <- readr::read_tsv(file = '../data/Canidae_BOLD.tsv')
 ```
 
+**Steps before cleaning coordinates data**
+
+(a) Before cleaning up df_raw, it would be nice to visualize the different column names present in the data set rather than scrolling through the view option.
+```{r, message=FALSE, warning= FALSE}
+colnames(df_raw)
+```
+
+By running the above code, we can determine that coordinates data is written in the "coord" column in the data set.Then we can visualize the first 10 values of the "coord"column to see the format in which the coordinates data is presented before deciding to clean the coordinates data. 
+```{r, message=FALSE, warning=FALSE}
+head (df_raw$coord)
+```
+
+(b) Additionally, using the code below, we can remove rows that are not required for analysis from the data set. 
+
+```{r, message =FALSE, warning = FALSE}
+
+df_raw <-df_raw [, -c(3:7, 9:21, 24:47, 51:54, 56:94 )]
+colnames(df_raw)
+```
+
+(c) Cleaning coordinate data
+
 This code filters out records without coordinates, removes the square brackets from coordinate strings, separates them into numeric latitude and longitude columns, and excludes any rows with invalid or missing values:
 - 2319 records are removed because of lack of coordinates information. 
 - 1258 records left.
 The result is saved as Canidae_clean_coords.tsv, ensuring a reproducible and fully cleaned dataset that contains only usable geographic data.
+
 ```{r clean, message=FALSE, warning=FALSE}
 df_clean <- df_raw %>%
   filter(!is.na(coord) & coord != "")
@@ -57,6 +92,7 @@ df_clean_split <- df_clean %>%
 
 readr::write_tsv(df_clean_split, "../data/Canidae_clean_coords.tsv")
 ```
+
 After cleaning, the processed dataset is reloaded as df_canidae for further analysis. This confirms that the data are ready to summarize, visualize, and test without re-running the cleaning steps every time.
 ```{r import_clean, message=FALSE, warning=FALSE}
 df_canidae <- readr::read_tsv(file = "../data/Canidae_clean_coords.tsv")
@@ -84,6 +120,30 @@ bin_filtered
 
 ```
 
+**Possible improvement to code chunk above in #4. Summarize by BIN** 
+We can use the below code chunk to:
+- remove BINs with missing IDs earlier in the code chunk and avoids NA groups. 
+na.rm =TRUE is used in summaries for robustness
+- order BINs by record count for easier interpretation
+
+```{r, message=TRUE, warning=TRUE}
+bin_summary <- df_canidae %>%
+  filter(!is.na(bin_uri) & bin_uri != "") %>%   # remove missing BINs ahead
+  group_by(bin_uri) %>%
+  summarise(
+    n_records = n(),
+    lat_min = min(lat, na.rm = TRUE),
+    lat_max = max(lat, na.rm = TRUE),
+    lat_range = lat_max - lat_min,
+    lat_median = median(lat, na.rm = TRUE),
+    species_list = paste(unique(na.omit(species)), collapse = "; ") # handle multiple species
+  ) %>%
+  ungroup() %>%
+  filter(n_records >= 3) %>% # keep only well-sampled BINs
+  arrange(desc(n_records))  # can sort by sample size
+
+print(bin_summary)
+```
 
 
 # 5. Distribution of Median Latitudes
@@ -95,7 +155,15 @@ ggplot(bin_filtered, aes(x = lat_median)) +
        x = "Median Latitude (°)", 
        y = "Number of BINs")
 ```
+If using proposed code chunk in section #4, the code for ggplot will change as there would be no bin_filtered data frame. Therefore code that would need to be run to obtain histogram is:
 
+```{r median_lat_dist, message=FALSE, warning=FALSE}
+ggplot(bin_summary, aes(x = lat_median)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Median Latitudes (Canidae BINs)",
+       x = "Median Latitude (°)", 
+       y = "Number of BINs")
+```
 
 # 6. Plot Latitude vs. Range Size
 This section visualizes the main relationship of interest. It plots each BIN’s median latitude on the x-axis and its latitudinal range on the y-axis, coloring points by hemisphere. A linear regression line is added to highlight the trend. The resulting figure shows that the slope is slightly negative rather than positive, suggesting that higher-latitude BINs in this dataset do not have broader ranges as Rapoport’s rule predicts.
@@ -116,14 +184,12 @@ ggplot2::ggplot(bin_filtered, ggplot2::aes(x = lat_median, y = lat_range, color 
 
 
 # 7. Statistical Test
-Here, a linear model is fitted (lat_range ~ lat_median) to formally test whether latitude significantly predicts range size. The model summary provides the slope, standard error, p-value, and R². The result shows a weak negative slope that is not statistically significant (p > 0.05), meaning that the data do not support the expected positive relationship between latitude and geographic range size.
+Here, a linear model is fitted (lat_range ~ lat_median) to formally test whether latitude significantly predicts range size. The model summary provides the slope, standard error, p-value, and R². Assuming a 5% significance level, the result (p>0.05) shows a weak negative slope that is not statistically significant, meaning that the data do not support the expected positive relationship between latitude and geographic range size.
 ```{r stats, message=FALSE, warning=FALSE}
 model <- lm(lat_range ~ lat_median, data = bin_filtered)
 summary(model)
 
 ```
-
-
 
 # 8. Conclusion
 The cleaned Canidae dataset contained only eight BINs after filtering, and the analysis found no significant relationship between latitude and range size. This result likely reflects limited sample size and strong northern bias rather than a true absence of the Rapoport pattern. Despite the lack of statistical support, the analysis successfully demonstrates the workflow of importing, cleaning, summarizing, visualizing, and testing real biodiversity data in R.
